@@ -4,15 +4,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scan to play AR video</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #controls { position: fixed; z-index: 10; bottom: 24px; left: 16px; right: 16px; text-align: center; color: white; }
+      #status { padding: 12px; background: #10243bdd; border-radius: 12px; }
+      button { padding: 12px 20px; border: 0; border-radius: 10px; font: inherit; cursor: pointer; }
+    </style>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   </head>
   <body>
+    <div id="controls">
+      <p id="status" role="status">Loading camera. Allow camera access, then point at the printed image.</p>
+      <button id="play" hidden>Tap to play video</button>
+      <button id="sound">Enable sound</button>
+    </div>
     <a-scene mindar-image="imageTargetSrc: ./targets.mind;" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+      <a-assets>
+        <video id="video" src="./video.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+      </a-assets>
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-      <a-entity mindar-image-target="targetIndex: 0">
-        <a-plane color="blue" opacity="0.5" position="0 0 0" height="0.552" width="1" rotation="0 0 0"></a-plane>
+      <a-entity id="target" mindar-image-target="targetIndex: 0">
+        <a-video id="screen" src="#video" position="0 0 0.01" height="0.5625" width="1" material="shader: flat"></a-video>
       </a-entity>
     </a-scene>
+    <script>
+      const video = document.querySelector('#video');
+      const target = document.querySelector('#target');
+      const status = document.querySelector('#status');
+      const play = document.querySelector('#play');
+      const sound = document.querySelector('#sound');
+      let tracking = false;
+      async function playVideo() {
+        try {
+          await video.play();
+          if (!tracking) { video.pause(); return; }
+          play.hidden = true;
+          status.textContent = 'Image detected. Keep it in view to watch the video.';
+        } catch (error) {
+          if (!tracking) return;
+          play.hidden = false;
+          status.textContent = 'Image detected. Tap below to start playback.';
+        }
+      }
+      video.addEventListener('loadedmetadata', () => {
+        if (video.videoWidth) document.querySelector('#screen').setAttribute('height', video.videoHeight / video.videoWidth);
+      });
+      target.addEventListener('targetFound', () => { tracking = true; playVideo(); });
+      target.addEventListener('targetLost', () => {
+        tracking = false;
+        video.pause();
+        play.hidden = true;
+        status.textContent = 'Point the camera at the printed image to resume.';
+      });
+      play.addEventListener('click', playVideo);
+      sound.addEventListener('click', () => {
+        video.muted = !video.muted;
+        sound.textContent = video.muted ? 'Enable sound' : 'Mute sound';
+        if (tracking) playVideo();
+      });
+      video.addEventListener('error', () => { status.textContent = 'Video could not load. Check your connection and reload.'; });
+      const scene = document.querySelector('a-scene');
+      scene.addEventListener('arReady', () => { status.textContent = 'Point the camera at the printed image.'; });
+      scene.addEventListener('arError', () => { status.textContent = 'Camera could not start. Allow camera access and reload this HTTPS page.'; });
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) video.pause();
+        else if (tracking) playVideo();
+      });
+    </script>
   </body>
 </html>
